@@ -11,6 +11,15 @@ closed_ports = []
 filtered_ports = []
 lock = Lock()
 
+os_identifiers = {
+    "Linux": ["Linux", "Ubuntu", "Debian", "CentOS", "Red Hat", "Fedora"],
+    "Windows": ["Windows", "Microsoft", "WinNT", "Windows Server"],
+    "Cisco": ["Cisco", "IOS"],
+    "SunOS": ["SunOS", "Solaris"],
+    "Android": ["Android"],
+    "MacOS": ["Mac OS X", "Macintosh"],
+}
+
 
 def generate_chunks(port_range="0-100", N_threads=10):
     port_range = port_range.split("-")
@@ -124,49 +133,59 @@ def group_open_ports(open_ports):
 def network_scan(network, port_range, max_threads, protocolType):
     """Escaneia um intervalo de endereços IP e portas"""
     ip_network = ipaddress.ip_network(network, strict=False)
-    for ip in ip_network.hosts():
-        print(f"\nScanning IP: {ip}")
-        port_results.clear()
-        open_ports.clear()
-        closed_ports.clear()
-        filtered_ports.clear()
+    with open("network_scan_results.txt", "w") as file:
+        for ip in ip_network.hosts():
+            file.write(f"\nScanning IP: {ip}\n")
+            print(f"\nScanning IP: {ip}")
+            port_results.clear()
+            open_ports.clear()
+            closed_ports.clear()
+            filtered_ports.clear()
 
-        chunks = generate_chunks(port_range=port_range, N_threads=max_threads)
-        with ThreadPoolExecutor(max_threads) as executor:
-            for chunk in chunks:
-                executor.submit(scan, str(ip), chunk, socket.AF_INET, protocolType)
+            chunks = generate_chunks(port_range=port_range, N_threads=max_threads)
+            with ThreadPoolExecutor(max_threads) as executor:
+                for chunk in chunks:
+                    executor.submit(scan, str(ip), chunk, socket.AF_INET, protocolType)
 
-        for port, status in port_results.items():
-            try:
-                service = socket.getservbyport(port, protocolType)
-            except:
-                service = "Unknown"
+            for port, status in port_results.items():
+                try:
+                    service = socket.getservbyport(port, protocolType)
+                except:
+                    service = "Unknown"
 
-            if status == "open":
-                open_ports[port] = service
-            elif status == "closed":
-                closed_ports.append(port)
-            else:
-                filtered_ports.append(port)
+                if status == "open":
+                    open_ports[port] = service
+                elif status == "closed":
+                    closed_ports.append(port)
+                else:
+                    filtered_ports.append(port)
 
-        print("\nScan Results for IP:", ip)
-        print("=" * 40)
+            file.write("\nScan Results for IP: {}\n".format(ip))
+            file.write("=" * 40 + "\n")
+            print("\nScan Results for IP:", ip)
+            print("=" * 40)
 
-        grouped_open_ports = group_open_ports(open_ports)
-        if grouped_open_ports:
-            print("\nOpen Ports:")
-            for line in grouped_open_ports:
-                print(line)
+            grouped_open_ports = group_open_ports(open_ports)
+            if grouped_open_ports:
+                file.write("\nOpen Ports:\n")
+                print("\nOpen Ports:")
+                for line in grouped_open_ports:
+                    file.write(line + "\n")
+                    print(line)
 
-        if closed_ports:
-            print("\nClosed Ports:")
-            for line in group_ports(closed_ports, "closed"):
-                print(line)
+            if closed_ports:
+                file.write("\nClosed Ports:\n")
+                print("\nClosed Ports:")
+                for line in group_ports(closed_ports, "closed"):
+                    file.write(line + "\n")
+                    print(line)
 
-        if filtered_ports:
-            print("\nFiltered Ports:")
-            for line in group_ports(filtered_ports, "filtered"):
-                print(line)
+            if filtered_ports:
+                file.write("\nFiltered Ports:\n")
+                print("\nFiltered Ports:")
+                for line in group_ports(filtered_ports, "filtered"):
+                    file.write(line + "\n")
+                    print(line)
 
 
 def resolve_host(host):
@@ -178,11 +197,52 @@ def resolve_host(host):
         sys.exit()
 
 
+def banner_grab(ip_address, open_ports):
+    os_identifiers = {
+        "Linux": ["Linux", "Ubuntu", "Debian", "CentOS", "Red Hat", "Fedora"],
+        "Windows": ["Windows", "Microsoft", "WinNT", "Windows Server"],
+        "Cisco": ["Cisco", "IOS"],
+        "SunOS": ["SunOS", "Solaris"],
+        "Android": ["Android"],
+        "MacOS": ["Mac OS X", "Macintosh"],
+    }
+    os_identified = None
+
+    for port in open_ports:
+        try:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(2)
+            sock.connect((ip_address, port))
+            sock.sendall(
+                b"HEAD / HTTP/1.1\r\nHost: " + ip_address.encode() + b"\r\n\r\n"
+            )
+            banner = sock.recv(1024).decode(errors="ignore").strip()
+            sock.close()
+
+            for os, identifiers in os_identifiers.items():
+                for keyword in identifiers:
+                    if keyword.lower() in banner.lower():
+                        os_identified = os
+                        break
+                if os_identified:
+                    break
+
+        except Exception as e:
+            continue
+
+    if os_identified:
+        print(f"Operating System identified: {os_identified}")
+    else:
+        print("No Operating System identified from banners.")
+
+
 scan_type = input("Enter scan type (single, network, or website): ").lower()
 if scan_type == "single":
     remote_server = input("Enter a remote host to scan: ")
     port_range = input("Enter the port range you want to scan (e.g. 100-200): ")
-    max_threads = int(input("Enter the number of threads: "))
+    start = port_range.split("-")[0]
+    end = port_range.split("-")[1]
+    max_threads = int(end) - int(start)
     protocolType = input(
         "Enter the type of protocol you want to verify (tcp or udp): "
     ).lower()
@@ -236,12 +296,16 @@ if scan_type == "single":
         for line in group_ports(filtered_ports, "filtered"):
             print(line)
 
+    banner_grab(remoteServerIP, open_ports.keys())
+
     print("\nScanning completed in:", time_final - time_init)
 
 elif scan_type == "network":
     network = input("Enter the network to scan (e.g. 192.168.1.0/24): ")
     port_range = input("Enter the port range you want to scan (e.g. 100-200): ")
-    max_threads = int(input("Enter the number of threads: "))
+    start = port_range.split("-")[0]
+    end = port_range.split("-")[1]
+    max_threads = int(end) - int(start)
     protocolType = input(
         "Enter the type of protocol you want to verify (tcp or udp): "
     ).lower()
@@ -253,14 +317,17 @@ elif scan_type == "network":
     print("\nNetwork scanning completed in:", time_final - time_init)
 
 elif scan_type == "website":
-    website = input("Enter the website URL (e.g. https://noic.com.br): ")
+    website = input(
+        "Enter the website URL (e.g. https://ensino.hashi.pro.br/redesoc/): "
+    )
     port_range = input("Enter the port range you want to scan (e.g. 100-200): ")
-    max_threads = int(input("Enter the number of threads: "))
+    start = port_range.split("-")[0]
+    end = port_range.split("-")[1]
+    max_threads = int(end) - int(start)
     protocolType = input(
         "Enter the type of protocol you want to verify (tcp or udp): "
     ).lower()
 
-    # Extrair o nome do host da URL
     host = website.split("//")[-1].split("/")[0]
     remoteServerIP = resolve_host(host)
 
@@ -309,6 +376,8 @@ elif scan_type == "website":
         print("\nFiltered Ports:")
         for line in group_ports(filtered_ports, "filtered"):
             print(line)
+
+    banner_grab(remoteServerIP, open_ports.keys())
 
     print("\nScanning completed in:", time_final - time_init)
 
