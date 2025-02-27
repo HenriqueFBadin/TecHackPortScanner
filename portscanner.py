@@ -169,8 +169,16 @@ def network_scan(network, port_range, max_threads, protocolType):
                 print(line)
 
 
-# Entrada do usuário
-scan_type = input("Enter scan type (single or network): ").lower()
+def resolve_host(host):
+    """Resolve o nome do host para um endereço IP"""
+    try:
+        return socket.gethostbyname(host)
+    except socket.gaierror:
+        print(f"Hostname {host} couldn't be resolved. Exiting...")
+        sys.exit()
+
+
+scan_type = input("Enter scan type (single, network, or website): ").lower()
 if scan_type == "single":
     remote_server = input("Enter a remote host to scan: ")
     port_range = input("Enter the port range you want to scan (e.g. 100-200): ")
@@ -244,5 +252,65 @@ elif scan_type == "network":
 
     print("\nNetwork scanning completed in:", time_final - time_init)
 
+elif scan_type == "website":
+    website = input("Enter the website URL (e.g. https://noic.com.br): ")
+    port_range = input("Enter the port range you want to scan (e.g. 100-200): ")
+    max_threads = int(input("Enter the number of threads: "))
+    protocolType = input(
+        "Enter the type of protocol you want to verify (tcp or udp): "
+    ).lower()
+
+    # Extrair o nome do host da URL
+    host = website.split("//")[-1].split("/")[0]
+    remoteServerIP = resolve_host(host)
+
+    print("-" * 60)
+    print(
+        f"Trying to connect to the host: {remoteServerIP} using {protocolType.upper()}"
+    )
+    print("-" * 60)
+
+    time_init = datetime.now()
+    chunks = generate_chunks(port_range=port_range, N_threads=max_threads)
+
+    with ThreadPoolExecutor(max_threads) as executor:
+        for chunk in chunks:
+            executor.submit(scan, remoteServerIP, chunk, socket.AF_INET, protocolType)
+
+    time_final = datetime.now()
+
+    for port, status in port_results.items():
+        try:
+            service = socket.getservbyport(port, protocolType)
+        except:
+            service = "Unknown"
+
+        if status == "open":
+            open_ports[port] = service
+        elif status == "closed":
+            closed_ports.append(port)
+        else:
+            filtered_ports.append(port)
+
+    print("\n\nScan Results\n" + "=" * 40)
+
+    grouped_open_ports = group_open_ports(open_ports)
+    if grouped_open_ports:
+        print("\nOpen Ports:")
+        for line in grouped_open_ports:
+            print(line)
+
+    if closed_ports:
+        print("\nClosed Ports:")
+        for line in group_ports(closed_ports, "closed"):
+            print(line)
+
+    if filtered_ports:
+        print("\nFiltered Ports:")
+        for line in group_ports(filtered_ports, "filtered"):
+            print(line)
+
+    print("\nScanning completed in:", time_final - time_init)
+
 else:
-    print("Invalid scan type. Please enter 'single' or 'network'.")
+    print("Invalid scan type. Please enter 'single', 'network', or 'website'.")
