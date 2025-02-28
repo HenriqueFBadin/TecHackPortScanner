@@ -64,3 +64,9 @@ A função `banner_grab` tenta obter banners de serviços rodando nas portas abe
 - [Criando um Banner Grabber em PYTHON!](https://youtu.be/mxBwRETDqIY?si=u3gfyiOeuD-0ZzRY) -> Utilizado para entender e como referência para implementar um banner grabber.
 
 - [How to verify that a UDP port is open](https://networkengineering.stackexchange.com/questions/26541/how-to-verify-that-a-udp-port-is-open) -> Utilizado para entender que se a resposta foi recebida, a porta está aberta; Se um mensagem ICMP 'Port Unreachable' foi retornada, a porta está fechada.
+
+## Vídeo de funcionamento do arquivo
+
+Dentro do repositório existe um vídeo de funcionamento do arquivo, que pode ser visto abaixo:
+
+[Portscanner Overview Video](Portscanner_Overview.mp4)
